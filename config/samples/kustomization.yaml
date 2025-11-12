@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- devportal_v1alpha1_apiproduct.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
