@@ -19,8 +19,10 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -45,6 +47,9 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+	gitSHA   string // value injected in compilation-time
+	dirty    string // value injected in compilation-time
+	version  string // value injected in compilation-time
 )
 
 func init() {
@@ -52,6 +57,14 @@ func init() {
 
 	utilruntime.Must(devportalv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+}
+
+func printControllerMetaInfo() {
+	log := ctrl.Log
+
+	log.Info(fmt.Sprintf("go version: %s", goruntime.Version()))
+	log.Info(fmt.Sprintf("go os/arch: %s/%s", goruntime.GOOS, goruntime.GOARCH))
+	log.Info("build information", "version", version, "commit", gitSHA, "dirty", dirty)
 }
 
 // nolint:gocyclo
@@ -88,6 +101,8 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	printControllerMetaInfo()
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
