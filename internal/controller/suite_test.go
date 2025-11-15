@@ -160,8 +160,8 @@ func deleteNamespaceWithContext(ctx context.Context, namespace *string) {
 	}).WithContext(ctx).Should(Succeed())
 }
 
-func buildBasicGateway(gwName, ns string, mutateFns ...func(*gwapiv1.Gateway)) *gwapiv1.Gateway {
-	gateway := &gwapiv1.Gateway{
+func buildBasicGateway(gwName, ns string) *gwapiv1.Gateway {
+	return &gwapiv1.Gateway{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Gateway",
 			APIVersion: gwapiv1.GroupVersion.String(),
@@ -182,14 +182,10 @@ func buildBasicGateway(gwName, ns string, mutateFns ...func(*gwapiv1.Gateway)) *
 			},
 		},
 	}
-	for _, mutateFn := range mutateFns {
-		mutateFn(gateway)
-	}
-	return gateway
 }
 
-func buildBasicHttpRoute(routeName, gwName, ns string, hostnames []string, mutateFns ...func(*gwapiv1.HTTPRoute)) *gwapiv1.HTTPRoute {
-	route := &gwapiv1.HTTPRoute{
+func buildBasicHttpRoute(routeName, gwName, ns string, hostnames []string) *gwapiv1.HTTPRoute {
+	return &gwapiv1.HTTPRoute{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "HTTPRoute",
 			APIVersion: gwapiv1.GroupVersion.String(),
@@ -223,10 +219,6 @@ func buildBasicHttpRoute(routeName, gwName, ns string, hostnames []string, mutat
 			},
 		},
 	}
-	for _, mutateFn := range mutateFns {
-		mutateFn(route)
-	}
-	return route
 }
 
 func addAcceptedCondition(route *gwapiv1.HTTPRoute) {

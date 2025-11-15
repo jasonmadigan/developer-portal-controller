@@ -66,8 +66,16 @@ func (r *APIProductReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (c
 	logger.V(1).Info("reconciling apiproducts")
 	defer logger.V(1).Info("reconciling apiproducts: done")
 
+	planList := &planpolicyv1alpha1.PlanPolicyList{}
+	err := r.List(ctx, planList)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	ctx = WithPlanPolicies(ctx, planList)
+
 	apiProductListRaw := &devportalv1alpha1.APIProductList{}
-	err := r.Client.List(ctx, apiProductListRaw)
+	err = r.List(ctx, apiProductListRaw)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -151,9 +159,6 @@ func (r *APIProductReconciler) calculateStatus(ctx context.Context, apiProductOb
 func (r *APIProductReconciler) readyCondition(ctx context.Context, apiProductObj *devportalv1alpha1.APIProduct) (*metav1.Condition, error) {
 	cond := &metav1.Condition{
 		Type: devportalv1alpha1.StatusConditionReady,
-		//Status:  metav1.ConditionTrue,
-		//Reason:  "HTTPRouteAvailable",
-		//Message: "HTTPRoute toystore is available",
 	}
 
 	route := &gwapiv1.HTTPRoute{}
@@ -161,7 +166,7 @@ func (r *APIProductReconciler) readyCondition(ctx context.Context, apiProductObj
 		Namespace: apiProductObj.Namespace,
 		Name:      string(apiProductObj.Spec.TargetRef.Name),
 	}
-	err := r.Client.Get(ctx, rKey, route)
+	err := r.Get(ctx, rKey, route)
 	if client.IgnoreNotFound(err) != nil {
 		return nil, err
 	}
@@ -225,7 +230,7 @@ func (r *APIProductReconciler) findPlanPolicyForAPIProduct(ctx context.Context, 
 		Namespace: apiProductObj.Namespace,
 		Name:      string(apiProductObj.Spec.TargetRef.Name),
 	}
-	err := r.Client.Get(ctx, rKey, route)
+	err := r.Get(ctx, rKey, route)
 	if client.IgnoreNotFound(err) != nil {
 		return nil, err
 	}
@@ -234,12 +239,11 @@ func (r *APIProductReconciler) findPlanPolicyForAPIProduct(ctx context.Context, 
 		return nil, nil
 	}
 
-	planPolicies, err := r.planPolicies(ctx)
-	if err != nil {
-		return nil, err
-	}
+	planPolicies := GetPlanPolicies(ctx)
 
 	if planPolicies == nil {
+		// should not happen
+		// If it does, check context content
 		return nil, errors.New("cannot read plan policies")
 	}
 
@@ -273,24 +277,6 @@ func (r *APIProductReconciler) findPlanPolicyForAPIProduct(ctx context.Context, 
 	}
 
 	return nil, nil
-}
-
-func (r *APIProductReconciler) planPolicies(ctx context.Context) (*planpolicyv1alpha1.PlanPolicyList, error) {
-	planList := GetPlanPolicies(ctx)
-
-	if planList != nil {
-		return planList, nil
-	}
-
-	planList = &planpolicyv1alpha1.PlanPolicyList{}
-	err := r.Client.List(ctx, planList)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx = WithPlanPolicies(ctx, planList)
-
-	return planList, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
