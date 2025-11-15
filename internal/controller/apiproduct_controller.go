@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -246,7 +247,9 @@ func (r *APIProductReconciler) findPlanPolicyForAPIProduct(ctx context.Context, 
 	// if not found, try targeting parents
 
 	planPolicy, ok := lo.Find(planPolicies.Items, func(p planpolicyv1alpha1.PlanPolicy) bool {
-		return p.Spec.TargetRef.Kind == "HTTPRoute" && string(p.Spec.TargetRef.Name) == route.Name
+		return p.Spec.TargetRef.Kind == "HTTPRoute" &&
+			p.Namespace == route.Namespace &&
+			string(p.Spec.TargetRef.Name) == route.Name
 	})
 
 	if ok {
@@ -259,7 +262,9 @@ func (r *APIProductReconciler) findPlanPolicyForAPIProduct(ctx context.Context, 
 
 	planPolicy, ok = lo.Find(gatewayPlanPolicies, func(plan planpolicyv1alpha1.PlanPolicy) bool {
 		return lo.ContainsBy(route.Spec.ParentRefs, func(parentRef gwapiv1.ParentReference) bool {
-			return plan.Spec.TargetRef.Name == parentRef.Name
+			parentNamespace := ptr.Deref(parentRef.Namespace, gwapiv1.Namespace(route.Namespace))
+			return plan.Spec.TargetRef.Name == parentRef.Name &&
+				plan.Namespace == string(parentNamespace)
 		})
 	})
 
