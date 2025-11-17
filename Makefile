@@ -318,5 +318,9 @@ OPERATOR_SDK = $(shell which operator-sdk)
 endif
 endif
 
+.PHONY: read-release-version
+read-release-version: ## Reads release version
+	@echo "$(VERSION)"
+
 # Include last to avoid changing MAKEFILE_LIST used above
 include ./make/*.mk
