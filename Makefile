@@ -87,7 +87,6 @@ test: manifests generate fmt vet setup-envtest gateway-api-crds kuadrant-crds ##
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
-# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= developer-portal-controller-test-e2e
@@ -229,7 +228,6 @@ kuadrant-crds: ## Copy Kuadrant Operator CRDs for testing
 
 ## Tool Binaries
 KUBECTL ?= kubectl
-KIND ?= kind
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
@@ -272,6 +270,13 @@ golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
+KIND = $(LOCALBIN)/kind
+$(KIND):
+	$(call go-install-tool,$(KIND),sigs.k8s.io/kind,v0.22.0)
+
+.PHONY: kind
+kind: $(KIND) ## Download kind locally if necessary.
+
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
 # $2 - package url which can be installed
@@ -304,3 +309,6 @@ else
 OPERATOR_SDK = $(shell which operator-sdk)
 endif
 endif
+
+# Include last to avoid changing MAKEFILE_LIST used above
+include ./make/*.mk
