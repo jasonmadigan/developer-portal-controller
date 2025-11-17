@@ -138,6 +138,8 @@ func PlanPolicyIntoPlans(plan *planpolicyv1alpha1.PlanPolicy) []PlanSpec {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="APIProduct Ready",priority=2
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // APIProduct is the Schema for the apiproducts API.
 type APIProduct struct {
