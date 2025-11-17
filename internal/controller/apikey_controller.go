@@ -159,13 +159,8 @@ func (r *APIKeyReconciler) reconcilePending(ctx context.Context, apiKey *devport
 	if err := r.Get(ctx, apiProductKey, apiProduct); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Error(err, "Referenced APIProduct not found", "apiProduct", apiProductKey)
-			meta.SetStatusCondition(&apiKey.Status.Conditions, metav1.Condition{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				Reason:             "APIProductNotFound",
-				Message:            fmt.Sprintf("APIProduct %s not found", apiProductKey),
-				ObservedGeneration: apiKey.Generation,
-			})
+			setReadyCondition(apiKey, metav1.ConditionFalse, "APIProductNotFound",
+				fmt.Sprintf("APIProduct %s not found", apiProductKey))
 			if err := r.Status().Update(ctx, apiKey); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -189,26 +184,14 @@ func (r *APIKeyReconciler) reconcilePending(ctx context.Context, apiKey *devport
 	if apiProduct.Spec.ApprovalMode == apiKeyApprovalModeAutomatic {
 		// Automatically approved
 		apiKey.Status.Phase = apiKeyPhaseApproved
-		// Set condition
-		meta.SetStatusCondition(&apiKey.Status.Conditions, metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "AwaitingSecret",
-			Message:            "API key was automatically approved, waiting for Secret creation",
-			ObservedGeneration: apiKey.Generation,
-		})
+		setReadyCondition(apiKey, metav1.ConditionFalse, "AwaitingSecret",
+			"API key was automatically approved, waiting for Secret creation")
 		logger.Info("Automatically approved APIKey")
 
 	} else {
 		// Manual mode - wait for external approval
-		// Set condition
-		meta.SetStatusCondition(&apiKey.Status.Conditions, metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "NotApproved",
-			Message:            "Request awaiting manual approval",
-			ObservedGeneration: apiKey.Generation,
-		})
+		setReadyCondition(apiKey, metav1.ConditionFalse, "NotApproved",
+			"Request awaiting manual approval")
 		logger.Info("APIKey is pending manual approval")
 	}
 
@@ -296,14 +279,8 @@ func (r *APIKeyReconciler) reconcileApproved(ctx context.Context, apiKey *devpor
 		Key:  apiKeySecretKey,
 	}
 
-	// Set condition
-	meta.SetStatusCondition(&apiKey.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
-		Status:             metav1.ConditionTrue,
-		Reason:             "SecretCreated",
-		Message:            "API key secret has been created successfully",
-		ObservedGeneration: apiKey.Generation,
-	})
+	setReadyCondition(apiKey, metav1.ConditionTrue, "SecretCreated",
+		"API key secret has been created successfully")
 
 	if err := r.Status().Update(ctx, apiKey); err != nil {
 		logger.Error(err, "Failed to update APIKey status")
@@ -340,13 +317,8 @@ func (r *APIKeyReconciler) reconcileRejected(ctx context.Context, apiKey *devpor
 	}
 
 	// Set condition to indicate the APIKey was rejected
-	meta.SetStatusCondition(&apiKey.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
-		Status:             metav1.ConditionFalse,
-		Reason:             "Rejected",
-		Message:            "API key request has been rejected",
-		ObservedGeneration: apiKey.Generation,
-	})
+	setReadyCondition(apiKey, metav1.ConditionFalse, "Rejected",
+		"API key request has been rejected")
 
 	if err := r.Status().Update(ctx, apiKey); err != nil {
 		logger.Error(err, "Failed to update APIKey status")
@@ -354,6 +326,17 @@ func (r *APIKeyReconciler) reconcileRejected(ctx context.Context, apiKey *devpor
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// setReadyCondition sets the Ready condition on the APIKey status.
+func setReadyCondition(apiKey *devportalv1alpha1.APIKey, status metav1.ConditionStatus, reason, message string) {
+	meta.SetStatusCondition(&apiKey.Status.Conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: apiKey.Generation,
+	})
 }
 
 // generateAPIKey generates a secure random API key.
