@@ -39,6 +39,8 @@ jobs:
             type=raw,value=${{ github.sha }},enable={{is_default_branch}}
             # will be used on a push tag event and requires a valid semver Git tag
             type=semver,pattern={{version}}
+            # set latest tag for default branch
+            type=raw,value=latest,enable={{is_default_branch}}
       - name: Read release string version
         id: release
         run: |
