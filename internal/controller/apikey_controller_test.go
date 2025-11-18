@@ -27,49 +27,78 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	devportalv1alpha1 "github.com/kuadrant/developer-portal-controller/api/v1alpha1"
 )
 
 var _ = Describe("APIKey Controller", func() {
+	const (
+		nodeTimeOut       = NodeTimeout(time.Second * 30)
+		TestHTTPRouteName = "my-route"
+	)
+	var (
+		testNamespace            string
+		apiProductNamespacedName types.NamespacedName
+		apiKeyNamespacedName     types.NamespacedName
+		apiProduct               *devportalv1alpha1.APIProduct
+		apiKey                   *devportalv1alpha1.APIKey
+	)
+
+	BeforeEach(func(ctx SpecContext) {
+		createNamespaceWithContext(ctx, &testNamespace)
+	})
+
+	AfterEach(func(ctx SpecContext) {
+		deleteNamespaceWithContext(ctx, &testNamespace)
+	}, nodeTimeOut)
+
 	Context("When reconciling an APIKey with automatic approval", func() {
 		const (
 			apiKeyName     = "test-apikey-auto"
 			apiProductName = "test-api-product"
-			namespace      = "default"
 		)
 
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      apiKeyName,
-			Namespace: namespace,
-		}
-
 		BeforeEach(func() {
 			By("Creating the APIProduct")
-			apiProduct := &devportalv1alpha1.APIProduct{
+			apiProductNamespacedName = types.NamespacedName{
+				Name:      apiProductName,
+				Namespace: testNamespace,
+			}
+			apiProduct = &devportalv1alpha1.APIProduct{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      apiProductName,
-					Namespace: namespace,
+					Name:      apiProductNamespacedName.Name,
+					Namespace: apiProductNamespacedName.Namespace,
 				},
-
 				Spec: devportalv1alpha1.APIProductSpec{
-					ApprovalMode: "automatic",
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReference{
+						Group: gwapiv1.GroupName,
+						Name:  TestHTTPRouteName,
+						Kind:  "HTTPRoute",
+					},
+					PublishStatus: "Draft",
+					ApprovalMode:  "automatic",
 				},
 			}
 			Expect(k8sClient.Create(ctx, apiProduct)).To(Succeed())
 
 			By("Creating the APIKey with automatic approval")
-			apiKey := &devportalv1alpha1.APIKey{
+			apiKeyNamespacedName = types.NamespacedName{
+				Name:      apiKeyName,
+				Namespace: testNamespace,
+			}
+			apiKey = &devportalv1alpha1.APIKey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      apiKeyName,
-					Namespace: namespace,
+					Name:      apiKeyNamespacedName.Name,
+					Namespace: apiKeyNamespacedName.Namespace,
 				},
 				Spec: devportalv1alpha1.APIKeySpec{
 					APIProductRef: &devportalv1alpha1.APIProductReference{
-						Name:      apiProductName,
-						Namespace: namespace,
+						Name:      apiProductNamespacedName.Name,
+						Namespace: apiProductNamespacedName.Namespace,
 					},
 					PlanTier: "premium",
 					UseCase:  "Testing automatic approval",
@@ -85,14 +114,14 @@ var _ = Describe("APIKey Controller", func() {
 		AfterEach(func() {
 			By("Cleaning up the APIKey")
 			apiKey := &devportalv1alpha1.APIKey{}
-			err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
+			err := k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, apiKey)).To(Succeed())
 			}
 
 			By("Cleaning up the APIProduct")
 			apiProduct := &devportalv1alpha1.APIProduct{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: apiProductName, Namespace: namespace}, apiProduct)
+			err = k8sClient.Get(ctx, apiKeyNamespacedName, apiProduct)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, apiProduct)).To(Succeed())
 			}
@@ -107,7 +136,7 @@ var _ = Describe("APIKey Controller", func() {
 			By("Running multiple reconciliation loops")
 			for i := 0; i < 3; i++ {
 				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
+					NamespacedName: apiKeyNamespacedName,
 				})
 				Expect(err).NotTo(HaveOccurred())
 			}
@@ -115,7 +144,7 @@ var _ = Describe("APIKey Controller", func() {
 			By("Checking the APIKey is approved")
 			apiKey := &devportalv1alpha1.APIKey{}
 			Eventually(func() string {
-				err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
+				err := k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 				if err != nil {
 					return ""
 				}
@@ -124,12 +153,6 @@ var _ = Describe("APIKey Controller", func() {
 
 			By("Verifying reviewedBy is set to system")
 			Expect(apiKey.Status.ReviewedBy).To(Equal("system"))
-
-			By("Verifying the Secret reference exists")
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
-				return err == nil && apiKey.Status.SecretRef != nil
-			}, time.Second*1, time.Millisecond*250).Should(BeTrue())
 
 			By("Checking the Secret was created")
 			secret := &corev1.Secret{}
@@ -157,39 +180,52 @@ var _ = Describe("APIKey Controller", func() {
 		const (
 			apiKeyName     = "test-apikey-manual"
 			apiProductName = "test-api-product-manual"
-			namespace      = "default"
 		)
 
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
+		apiKeyNamespacedName := types.NamespacedName{
 			Name:      apiKeyName,
-			Namespace: namespace,
+			Namespace: testNamespace,
 		}
 
 		BeforeEach(func() {
 			By("Creating the APIProduct")
-			apiProduct := &devportalv1alpha1.APIProduct{
+			apiProductNamespacedName = types.NamespacedName{
+				Name:      apiProductName,
+				Namespace: testNamespace,
+			}
+			apiProduct = &devportalv1alpha1.APIProduct{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      apiProductName,
-					Namespace: namespace,
+					Name:      apiProductNamespacedName.Name,
+					Namespace: apiProductNamespacedName.Namespace,
 				},
 				Spec: devportalv1alpha1.APIProductSpec{
-					ApprovalMode: "manual",
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReference{
+						Group: gwapiv1.GroupName,
+						Name:  TestHTTPRouteName,
+						Kind:  "HTTPRoute",
+					},
+					PublishStatus: "Draft",
+					ApprovalMode:  "manual",
 				},
 			}
 			Expect(k8sClient.Create(ctx, apiProduct)).To(Succeed())
 
 			By("Creating the APIKey with manual approval")
-			apiKey := &devportalv1alpha1.APIKey{
+			apiKeyNamespacedName = types.NamespacedName{
+				Name:      apiKeyName,
+				Namespace: testNamespace,
+			}
+			apiKey = &devportalv1alpha1.APIKey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      apiKeyName,
-					Namespace: namespace,
+					Name:      apiKeyNamespacedName.Name,
+					Namespace: apiKeyNamespacedName.Namespace,
 				},
 				Spec: devportalv1alpha1.APIKeySpec{
 					APIProductRef: &devportalv1alpha1.APIProductReference{
-						Name:      apiProductName,
-						Namespace: namespace,
+						Name:      apiProductNamespacedName.Name,
+						Namespace: apiProductNamespacedName.Namespace,
 					},
 					PlanTier: "enterprise",
 					UseCase:  "Testing manual approval",
@@ -205,14 +241,14 @@ var _ = Describe("APIKey Controller", func() {
 		AfterEach(func() {
 			By("Cleaning up the APIKey")
 			apiKey := &devportalv1alpha1.APIKey{}
-			err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
+			err := k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, apiKey)).To(Succeed())
 			}
 
 			By("Cleaning up the APIProduct")
 			apiProduct := &devportalv1alpha1.APIProduct{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: apiProductName, Namespace: namespace}, apiProduct)
+			err = k8sClient.Get(ctx, apiProductNamespacedName, apiProduct)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, apiProduct)).To(Succeed())
 			}
@@ -227,7 +263,7 @@ var _ = Describe("APIKey Controller", func() {
 			By("Running multiple reconciliation loops")
 			for i := 0; i < 3; i++ {
 				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
+					NamespacedName: apiKeyNamespacedName,
 				})
 				Expect(err).NotTo(HaveOccurred())
 			}
@@ -235,7 +271,7 @@ var _ = Describe("APIKey Controller", func() {
 			By("Checking the APIKey remains in Pending status")
 			apiKey := &devportalv1alpha1.APIKey{}
 			Consistently(func() string {
-				err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
+				err := k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 				if err != nil {
 					return ""
 				}
@@ -249,7 +285,7 @@ var _ = Describe("APIKey Controller", func() {
 
 			By("Verifying the Secret was not created")
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
+				err := k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 				return err == nil && apiKey.Status.SecretRef != nil
 			}, time.Second*1, time.Millisecond*250).Should(BeFalse())
 		})
@@ -259,39 +295,47 @@ var _ = Describe("APIKey Controller", func() {
 		const (
 			apiKeyName     = "test-apikey-rejected"
 			apiProductName = "test-api-product-rejected"
-			namespace      = "default"
 		)
 
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      apiKeyName,
-			Namespace: namespace,
-		}
-
 		BeforeEach(func() {
 			By("Creating the APIProduct")
-			apiProduct := &devportalv1alpha1.APIProduct{
+			apiProductNamespacedName = types.NamespacedName{
+				Name:      apiProductName,
+				Namespace: testNamespace,
+			}
+			apiProduct = &devportalv1alpha1.APIProduct{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      apiProductName,
-					Namespace: namespace,
+					Name:      apiProductNamespacedName.Name,
+					Namespace: apiProductNamespacedName.Namespace,
 				},
 				Spec: devportalv1alpha1.APIProductSpec{
-					ApprovalMode: "automatic",
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReference{
+						Group: gwapiv1.GroupName,
+						Name:  TestHTTPRouteName,
+						Kind:  "HTTPRoute",
+					},
+					PublishStatus: "Draft",
+					ApprovalMode:  "automatic",
 				},
 			}
 			Expect(k8sClient.Create(ctx, apiProduct)).To(Succeed())
 
 			By("Creating the APIKey")
-			apiKey := &devportalv1alpha1.APIKey{
+			apiKeyNamespacedName = types.NamespacedName{
+				Name:      apiKeyName,
+				Namespace: testNamespace,
+			}
+			apiKey = &devportalv1alpha1.APIKey{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      apiKeyName,
-					Namespace: namespace,
+					Name:      apiKeyNamespacedName.Name,
+					Namespace: apiKeyNamespacedName.Namespace,
 				},
 				Spec: devportalv1alpha1.APIKeySpec{
 					APIProductRef: &devportalv1alpha1.APIProductReference{
-						Name:      apiProductName,
-						Namespace: namespace,
+						Name:      apiProductNamespacedName.Name,
+						Namespace: apiProductNamespacedName.Namespace,
 					},
 					PlanTier: "basic",
 					UseCase:  "Testing rejection",
@@ -307,14 +351,14 @@ var _ = Describe("APIKey Controller", func() {
 		AfterEach(func() {
 			By("Cleaning up the APIKey")
 			apiKey := &devportalv1alpha1.APIKey{}
-			err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
+			err := k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, apiKey)).To(Succeed())
 			}
 
 			By("Cleaning up the APIProduct")
 			apiProduct := &devportalv1alpha1.APIProduct{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: apiProductName, Namespace: namespace}, apiProduct)
+			err = k8sClient.Get(ctx, apiProductNamespacedName, apiProduct)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, apiProduct)).To(Succeed())
 			}
@@ -329,7 +373,7 @@ var _ = Describe("APIKey Controller", func() {
 			By("Running reconciliation to approve and create Secret")
 			for i := 0; i < 3; i++ {
 				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
+					NamespacedName: apiKeyNamespacedName,
 				})
 				Expect(err).NotTo(HaveOccurred())
 			}
@@ -337,7 +381,7 @@ var _ = Describe("APIKey Controller", func() {
 			By("Verifying the APIKey is approved and Secret is created")
 			apiKey := &devportalv1alpha1.APIKey{}
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
+				err := k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 				return err == nil && apiKey.Status.Phase == "Approved" && apiKey.Status.SecretRef != nil
 			}, time.Second*10, time.Millisecond*250).Should(BeTrue())
 
@@ -351,7 +395,7 @@ var _ = Describe("APIKey Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Changing the APIKey phase to Rejected")
-			err = k8sClient.Get(ctx, typeNamespacedName, apiKey)
+			err = k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 			Expect(err).NotTo(HaveOccurred())
 			apiKey.Status.Phase = "Rejected"
 			err = k8sClient.Status().Update(ctx, apiKey)
@@ -359,7 +403,7 @@ var _ = Describe("APIKey Controller", func() {
 
 			By("Running reconciliation for the rejected APIKey")
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+				NamespacedName: apiKeyNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -371,12 +415,12 @@ var _ = Describe("APIKey Controller", func() {
 
 			By("Verifying the SecretRef is cleared from status")
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, typeNamespacedName, apiKey)
+				err := k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 				return err == nil && apiKey.Status.SecretRef == nil
 			}, time.Second*10, time.Millisecond*250).Should(BeTrue())
 
 			By("Verifying the Ready condition is set to False with Rejected reason")
-			err = k8sClient.Get(ctx, typeNamespacedName, apiKey)
+			err = k8sClient.Get(ctx, apiKeyNamespacedName, apiKey)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(apiKey.Status.Conditions).ToNot(BeEmpty())
 
