@@ -99,9 +99,6 @@ spec:
           status:
             description: APIKeyStatus defines the observed state of APIKey.
             properties:
-              apiBasePath:
-                description: APIBasePath is the base path for the API
-                type: string
               apiHostname:
                 description: APIHostname is the hostname from the HTTPRoute
                 type: string

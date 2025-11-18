@@ -68,10 +68,6 @@ type APIKeyStatus struct {
 	// +optional
 	APIHostname string `json:"apiHostname,omitempty"`
 
-	// APIBasePath is the base path for the API
-	// +optional
-	APIBasePath string `json:"apiBasePath,omitempty"`
-
 	// ReviewedBy indicates who approved or rejected the request
 	// +optional
 	ReviewedBy string `json:"reviewedBy,omitempty"`

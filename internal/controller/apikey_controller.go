@@ -79,11 +79,6 @@ func (r *APIKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	// Handle deletion
-	if !apiKey.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, apiKey)
-	}
-
 	// Add finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(apiKey, apiKeyFinalizer) {
 		controllerutil.AddFinalizer(apiKey, apiKeyFinalizer)
@@ -107,39 +102,6 @@ func (r *APIKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return r.reconcileApproved(ctx, apiKey)
 	case apiKeyPhaseRejected:
 		return r.reconcileRejected(ctx, apiKey)
-	}
-
-	return ctrl.Result{}, nil
-}
-
-// reconcileDelete handles the deletion of an APIKey and cleans up the associated Secret.
-func (r *APIKeyReconciler) reconcileDelete(ctx context.Context, apiKey *devportalv1alpha1.APIKey) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Delete the Secret if it exists
-	if apiKey.Status.SecretRef != nil {
-		secret := &corev1.Secret{}
-		secretKey := types.NamespacedName{
-			Name:      apiKey.Status.SecretRef.Name,
-			Namespace: apiKey.Namespace,
-		}
-		if err := r.Get(ctx, secretKey, secret); err == nil {
-			if err := r.Delete(ctx, secret); err != nil {
-				logger.Error(err, "Failed to delete Secret")
-				return ctrl.Result{}, err
-			}
-			logger.Info("Deleted Secret", "secret", secretKey)
-		} else if !apierrors.IsNotFound(err) {
-			logger.Error(err, "Failed to get Secret")
-			return ctrl.Result{}, err
-		}
-	}
-
-	// Remove finalizer
-	controllerutil.RemoveFinalizer(apiKey, apiKeyFinalizer)
-	if err := r.Update(ctx, apiKey); err != nil {
-		logger.Error(err, "Failed to remove finalizer")
-		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -272,6 +234,12 @@ func (r *APIKeyReconciler) reconcileApproved(ctx context.Context, apiKey *devpor
 	}
 
 	logger.Info("Created Secret for APIKey", "secret", secret.Name, "namespace", secret.Namespace)
+
+	// Update the APIKey obj
+	if err = r.Update(ctx, apiKey); err != nil {
+		logger.Error(err, "Failed to update API key with new Secret OwnerReference")
+		return ctrl.Result{}, err
+	}
 
 	// Update status with Secret reference and other metadata
 	apiKey.Status.SecretRef = &devportalv1alpha1.SecretReference{
