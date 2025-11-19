@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -225,8 +226,9 @@ func main() {
 	}
 
 	if err := (&controller.APIProductReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		HTTPClient: &http.Client{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "APIProduct")
 		os.Exit(1)
