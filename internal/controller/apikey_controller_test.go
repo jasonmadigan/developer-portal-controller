@@ -97,8 +97,7 @@ var _ = Describe("APIKey Controller", func() {
 				},
 				Spec: devportalv1alpha1.APIKeySpec{
 					APIProductRef: &devportalv1alpha1.APIProductReference{
-						Name:      apiProductNamespacedName.Name,
-						Namespace: apiProductNamespacedName.Namespace,
+						Name: apiProductNamespacedName.Name,
 					},
 					PlanTier: "premium",
 					UseCase:  "Testing automatic approval",
@@ -224,8 +223,7 @@ var _ = Describe("APIKey Controller", func() {
 				},
 				Spec: devportalv1alpha1.APIKeySpec{
 					APIProductRef: &devportalv1alpha1.APIProductReference{
-						Name:      apiProductNamespacedName.Name,
-						Namespace: apiProductNamespacedName.Namespace,
+						Name: apiProductNamespacedName.Name,
 					},
 					PlanTier: "enterprise",
 					UseCase:  "Testing manual approval",
@@ -334,8 +332,7 @@ var _ = Describe("APIKey Controller", func() {
 				},
 				Spec: devportalv1alpha1.APIKeySpec{
 					APIProductRef: &devportalv1alpha1.APIProductReference{
-						Name:      apiProductNamespacedName.Name,
-						Namespace: apiProductNamespacedName.Namespace,
+						Name: apiProductNamespacedName.Name,
 					},
 					PlanTier: "basic",
 					UseCase:  "Testing rejection",

@@ -21,9 +21,7 @@ import (
 )
 
 type APIProductReference struct {
-	Name string `json:"name"`
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
+	Name string `json:"name"` // Just name for now, in the future we might want to add KGV.
 }
 
 // APIKeySpec defines the desired state of APIKey.

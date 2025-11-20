@@ -111,7 +111,7 @@ func (r *APIKeyReconciler) reconcilePending(ctx context.Context, apiKey *devport
 	apiProduct := &devportalv1alpha1.APIProduct{}
 	apiProductKey := types.NamespacedName{
 		Name:      apiKey.Spec.APIProductRef.Name,
-		Namespace: apiKey.Spec.APIProductRef.Namespace,
+		Namespace: apiKey.Namespace,
 	}
 	if err := r.Get(ctx, apiProductKey, apiProduct); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -133,6 +133,12 @@ func (r *APIKeyReconciler) reconcilePending(ctx context.Context, apiKey *devport
 		return ctrl.Result{}, err
 	}
 
+	// Update the APIKey obj
+	if err := r.Update(ctx, apiKey); err != nil {
+		logger.Error(err, "Failed to update APIProduct after setting OwnerReference")
+		return ctrl.Result{}, err
+	}
+
 	now := metav1.Now()
 	apiKey.Status.ReviewedBy = "system"
 	apiKey.Status.ReviewedAt = &now
@@ -147,6 +153,7 @@ func (r *APIKeyReconciler) reconcilePending(ctx context.Context, apiKey *devport
 
 	} else {
 		// Manual mode - wait for external approval
+		apiKey.Status.Phase = apiKeyPhasePending
 		setReadyCondition(apiKey, metav1.ConditionFalse, "NotApproved",
 			"Request awaiting manual approval")
 		logger.Info("APIKey is pending manual approval")
@@ -188,6 +195,12 @@ func (r *APIKeyReconciler) reconcileApproved(ctx context.Context, apiKey *devpor
 		return ctrl.Result{}, err
 	}
 
+	// Set APIKey as the owner of the Secret for garbage collection
+	if err = controllerutil.SetOwnerReference(apiKey, secret, r.Scheme); err != nil {
+		logger.Error(err, "Failed to set owner reference on Secret")
+		return ctrl.Result{}, err
+	}
+
 	// Reconcile creation of the Secret
 	if err = r.Create(ctx, secret); err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -203,18 +216,6 @@ func (r *APIKeyReconciler) reconcileApproved(ctx context.Context, apiKey *devpor
 	}
 
 	logger.Info("Created Secret for APIKey", "secret", secret.Name, "namespace", secret.Namespace)
-
-	// Set APIKey as the owner of the Secret for garbage collection
-	if err = controllerutil.SetOwnerReference(apiKey, secret, r.Scheme); err != nil {
-		logger.Error(err, "Failed to set owner reference on Secret")
-		return ctrl.Result{}, err
-	}
-
-	// Update the APIKey obj
-	if err = r.Update(ctx, apiKey); err != nil {
-		logger.Error(err, "Failed to update API key with new Secret OwnerReference")
-		return ctrl.Result{}, err
-	}
 
 	// Update status with Secret reference and other metadata
 	apiKey.Status.SecretRef = &devportalv1alpha1.SecretReference{
@@ -260,6 +261,7 @@ func (r *APIKeyReconciler) reconcileRejected(ctx context.Context, apiKey *devpor
 	}
 
 	// Set condition to indicate the APIKey was rejected
+	apiKey.Status.Phase = apiKeyPhaseRejected
 	setReadyCondition(apiKey, metav1.ConditionFalse, "Rejected",
 		"API key request has been rejected")
 
