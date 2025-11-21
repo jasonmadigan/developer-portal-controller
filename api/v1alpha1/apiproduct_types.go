@@ -133,7 +133,7 @@ type APIProductStatus struct {
 	// list of planpolicies discovered from httproute
 	DiscoveredPlans []PlanSpec `json:"discoveredPlans,omitempty"`
 
-	// list of planpolicies discovered from httproute
+	// OpenAPI specification fetched from the API and its sync status
 	// +optional
 	OpenAPI *OpenAPIStatus `json:"openapi,omitempty"`
 

@@ -267,7 +267,8 @@ spec:
                 format: int64
                 type: integer
               openapi:
-                description: list of planpolicies discovered from httproute
+                description: OpenAPI specification fetched from the API and its sync
+                  status
                 properties:
                   lastSyncTime:
                     description: lastSyncTime is the last time the raw content was
