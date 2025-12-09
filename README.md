@@ -134,8 +134,7 @@ status:
   reviewedBy: admin@example.com
   reviewedAt: "2025-12-09T10:30:00Z"
   limits:
-    - name: api-rate-limit
-      namespace: default
+    daily: 1000
   secretRef:
     name: toystore-apikey-secret
     key: api-key
