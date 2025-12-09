@@ -50,16 +50,19 @@ status:
   discoveredPlans:
     - tier: gold
       limits:
-        - name: api-rate-limit
-          namespace: default
+        custom:
+          - limit: 10000
+            window: "3600s"
     - tier: silver
       limits:
-        - name: api-rate-limit-silver
-          namespace: default
+        daily: 1000
+        weekly: 7000
+        monthly: 10000
     - tier: bronze
       limits:
-        - name: api-rate-limit-bronze
-          namespace: default
+        daily: 100
+        weekly: 700
+        monthly: 1000
   openapi:
     raw: |
       openapi: 3.0.0
