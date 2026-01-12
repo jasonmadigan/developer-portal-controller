@@ -145,6 +145,8 @@ var _ = Describe("APIProduct Controller: AuthPolicy Discovery", func() {
 			Expect(k8sClient.Status().Update(ctx, route)).ToNot(HaveOccurred())
 			Expect(k8sClient.Create(ctx, apiproduct)).ToNot(HaveOccurred())
 			Expect(k8sClient.Create(ctx, authPolicy)).ToNot(HaveOccurred())
+			setAcceptedAndEnforcedConditionsToAuthPolicy(authPolicy)
+			Expect(k8sClient.Status().Update(ctx, authPolicy)).ToNot(HaveOccurred())
 		})
 
 		It("should discover auth scheme from route-targeted authpolicy", func() {
@@ -288,6 +290,8 @@ var _ = Describe("APIProduct Controller: AuthPolicy Discovery", func() {
 			Expect(k8sClient.Status().Update(ctx, route)).ToNot(HaveOccurred())
 			Expect(k8sClient.Create(ctx, apiproduct)).ToNot(HaveOccurred())
 			Expect(k8sClient.Create(ctx, authPolicy)).ToNot(HaveOccurred())
+			setAcceptedAndEnforcedConditionsToAuthPolicy(authPolicy)
+			Expect(k8sClient.Status().Update(ctx, authPolicy)).ToNot(HaveOccurred())
 		})
 
 		It("should discover auth scheme from gateway-targeted authpolicy", func() {
@@ -418,6 +422,129 @@ var _ = Describe("APIProduct Controller: AuthPolicy Discovery", func() {
 			Expect(authPolicyCondition.Message).To(Equal("AuthPolicy not found"))
 
 			By("Checking no auth scheme is discovered")
+			Expect(apiproduct.Status.DiscoveredAuthScheme).To(BeNil())
+		})
+	})
+
+	Context("When the authpolicy is not accepted", func() {
+		const apiProductName = "test-apiproduct-auth"
+		const authPolicyName = "test-authpolicy"
+
+		ctx := context.Background()
+
+		var (
+			apiProductKey types.NamespacedName
+			apiproduct    *devportalv1alpha1.APIProduct
+			authPolicy    *kuadrantapiv1.AuthPolicy
+		)
+
+		BeforeEach(func() {
+			// Create namespace-dependent objects after namespace is created
+			apiProductKey = types.NamespacedName{
+				Name:      apiProductName,
+				Namespace: testNamespace,
+			}
+			apiproduct = &devportalv1alpha1.APIProduct{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "APIProduct",
+					APIVersion: devportalv1alpha1.GroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      apiProductKey.Name,
+					Namespace: apiProductKey.Namespace,
+				},
+				Spec: devportalv1alpha1.APIProductSpec{
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReference{
+						Group: gwapiv1.GroupName,
+						Name:  TestHTTPRouteName,
+						Kind:  "HTTPRoute",
+					},
+					PublishStatus: "Draft",
+					ApprovalMode:  "manual",
+				},
+			}
+
+			authPolicy = &kuadrantapiv1.AuthPolicy{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AuthPolicy",
+					APIVersion: kuadrantapiv1.GroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      authPolicyName,
+					Namespace: apiProductKey.Namespace,
+				},
+				Spec: kuadrantapiv1.AuthPolicySpec{
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
+						LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
+							Group: gwapiv1.GroupName,
+							Name:  gwapiv1.ObjectName(TestHTTPRouteName),
+							Kind:  "HTTPRoute",
+						},
+					},
+					AuthPolicySpecProper: kuadrantapiv1.AuthPolicySpecProper{
+						AuthScheme: &kuadrantapiv1.AuthSchemeSpec{
+							Authentication: map[string]kuadrantapiv1.MergeableAuthenticationSpec{
+								"api-key": {
+									AuthenticationSpec: authorinov1beta3.AuthenticationSpec{
+										Credentials: authorinov1beta3.Credentials{
+											AuthorizationHeader: &authorinov1beta3.Prefixed{
+												Prefix: "APIKEY",
+											},
+										},
+										AuthenticationMethodSpec: authorinov1beta3.AuthenticationMethodSpec{
+											ApiKey: &authorinov1beta3.ApiKeyAuthenticationSpec{
+												Selector: &metav1.LabelSelector{
+													MatchLabels: map[string]string{
+														"app": "test-label",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			gateway = buildBasicGateway(TestGatewayName, testNamespace)
+			Expect(k8sClient.Create(ctx, gateway)).To(Succeed())
+			route = buildBasicHttpRoute(TestHTTPRouteName, TestGatewayName, testNamespace, []string{"example.com"})
+			Expect(k8sClient.Create(ctx, route)).ToNot(HaveOccurred())
+			addAcceptedCondition(route)
+			Expect(k8sClient.Status().Update(ctx, route)).ToNot(HaveOccurred())
+			Expect(k8sClient.Create(ctx, apiproduct)).ToNot(HaveOccurred())
+			Expect(k8sClient.Create(ctx, authPolicy)).ToNot(HaveOccurred())
+			setNotAcceptedConditionToAuthPolicy(authPolicy)
+			Expect(k8sClient.Status().Update(ctx, authPolicy)).ToNot(HaveOccurred())
+		})
+
+		It("should not discover auth scheme", func() {
+			By("Reconciling the created resource")
+			controllerReconciler := &APIProductReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, apiProductKey, apiproduct)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Checking status conditions")
+			// Check Ready condition
+			readyCondition := meta.FindStatusCondition(apiproduct.Status.Conditions, devportalv1alpha1.StatusConditionReady)
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(readyCondition.Reason).To(Equal("HTTPRouteAccepted"))
+
+			// Check AuthPolicyDiscovered condition
+			authPolicyCondition := meta.FindStatusCondition(apiproduct.Status.Conditions, devportalv1alpha1.StatusConditionAuthPolicyDiscovered)
+			Expect(authPolicyCondition).NotTo(BeNil())
+			Expect(authPolicyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(authPolicyCondition.Reason).To(Equal("AuthPolicyNotReady"))
 			Expect(apiproduct.Status.DiscoveredAuthScheme).To(BeNil())
 		})
 	})

@@ -38,6 +38,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	kuadrantapiv1 "github.com/kuadrant/kuadrant-operator/api/v1"
 	planpolicyv1alpha1 "github.com/kuadrant/kuadrant-operator/cmd/extensions/plan-policy/api/v1alpha1"
@@ -271,4 +272,39 @@ func addNotAcceptedCondition(route *gwapiv1.HTTPRoute) {
 		ControllerName: gwapiv1.GatewayController("example.com/gateway-controller"),
 		Conditions:     conditions,
 	})
+}
+
+// TODO: ask claude
+func setAcceptedAndEnforcedConditionsToAuthPolicy(policy *kuadrantapiv1.AuthPolicy) {
+	conditions := policy.Status.Conditions
+
+	meta.SetStatusCondition(&conditions, metav1.Condition{
+		Type:   string(gatewayapiv1alpha2.PolicyConditionAccepted),
+		Status: metav1.ConditionTrue,
+		Reason: string(gatewayapiv1alpha2.PolicyReasonAccepted),
+	})
+	meta.SetStatusCondition(&conditions, metav1.Condition{
+		Type:   "Enforced",
+		Status: metav1.ConditionTrue,
+		Reason: "Enforced",
+	})
+
+	policy.Status.Conditions = conditions
+}
+
+func setNotAcceptedConditionToAuthPolicy(policy *kuadrantapiv1.AuthPolicy) {
+	conditions := policy.Status.Conditions
+
+	meta.SetStatusCondition(&conditions, metav1.Condition{
+		Type:   string(gatewayapiv1alpha2.PolicyConditionAccepted),
+		Status: metav1.ConditionFalse,
+		Reason: string(gatewayapiv1alpha2.PolicyReasonInvalid),
+	})
+	meta.SetStatusCondition(&conditions, metav1.Condition{
+		Type:   "Enforced",
+		Status: metav1.ConditionTrue,
+		Reason: "Enforced",
+	})
+
+	policy.Status.Conditions = conditions
 }
