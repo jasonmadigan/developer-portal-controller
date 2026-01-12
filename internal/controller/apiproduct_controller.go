@@ -179,12 +179,7 @@ func (r *APIProductReconciler) calculateStatus(ctx context.Context, apiProductOb
 		newStatus.DiscoveredAuthScheme = authPolicy.Spec.AuthScheme
 	}
 
-	authPolicyDiscoveredCond, err := r.authPolicyDiscoveredCondition(ctx, apiProductObj)
-	if err != nil {
-		return nil, err
-	}
-
-	meta.SetStatusCondition(&newStatus.Conditions, *authPolicyDiscoveredCond)
+	meta.SetStatusCondition(&newStatus.Conditions, r.authPolicyDiscoveredCondition(ctx, authPolicy))
 
 	readyCond, err := r.readyCondition(ctx, apiProductObj)
 	if err != nil {
@@ -271,28 +266,23 @@ func (r *APIProductReconciler) planPolicyDiscoveredCondition(ctx context.Context
 	return cond, nil
 }
 
-func (r *APIProductReconciler) authPolicyDiscoveredCondition(ctx context.Context, apiProductObj *devportalv1alpha1.APIProduct) (*metav1.Condition, error) {
-	cond := &metav1.Condition{
+func (r *APIProductReconciler) authPolicyDiscoveredCondition(ctx context.Context, authPolicy *kuadrantapiv1.AuthPolicy) metav1.Condition {
+	cond := metav1.Condition{
 		Type:   devportalv1alpha1.StatusConditionAuthPolicyDiscovered,
 		Status: metav1.ConditionTrue,
 		Reason: "Found",
-	}
-
-	authPolicy, err := r.findAuthPolicyForAPIProduct(ctx, apiProductObj)
-	if err != nil {
-		return nil, err
 	}
 
 	if authPolicy == nil {
 		cond.Status = metav1.ConditionFalse
 		cond.Reason = "NotFound"
 		cond.Message = "AuthPolicy not found"
-		return cond, nil
-	} else {
-		cond.Message = fmt.Sprintf("Discovered AuthPolicy %s targeting %s %s", authPolicy.Name, authPolicy.Spec.TargetRef.Kind, authPolicy.Spec.TargetRef.Name)
+		return cond
 	}
 
-	return cond, nil
+	cond.Message = fmt.Sprintf("Discovered AuthPolicy %s targeting %s %s", authPolicy.Name, authPolicy.Spec.TargetRef.Kind, authPolicy.Spec.TargetRef.Name)
+
+	return cond
 }
 
 func (r *APIProductReconciler) findPlanPolicyForAPIProduct(ctx context.Context, apiProductObj *devportalv1alpha1.APIProduct) (*planpolicyv1alpha1.PlanPolicy, error) {
