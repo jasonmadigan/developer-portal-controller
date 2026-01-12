@@ -175,7 +175,7 @@ func (r *APIProductReconciler) calculateStatus(ctx context.Context, apiProductOb
 		return nil, err
 	}
 
-	if authPolicy != nil {
+	if authPolicy != nil && IsAuthPolicyAcceptedAndEnforced(authPolicy) {
 		newStatus.DiscoveredAuthScheme = authPolicy.Spec.AuthScheme
 	}
 
@@ -277,6 +277,14 @@ func (r *APIProductReconciler) authPolicyDiscoveredCondition(authPolicy *kuadran
 		cond.Status = metav1.ConditionFalse
 		cond.Reason = "NotFound"
 		cond.Message = "AuthPolicy not found"
+		return cond
+	}
+
+	// Not Accepted OR Not Enforced
+	if !IsAuthPolicyAcceptedAndEnforced(authPolicy) {
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = "AuthPolicyNotReady"
+		cond.Message = "AuthPolicy not accepted or not enforced"
 		return cond
 	}
 
