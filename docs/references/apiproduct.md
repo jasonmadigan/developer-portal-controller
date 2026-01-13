@@ -143,7 +143,7 @@ spec:
     techdocsRef: url:https://github.com/example/payment-api/tree/main/docs
 ```
 
-## Relationship to HTTPRoute, AuthPolicy, and RateLimitPolicy
+## Relationship to HTTPRoute, AuthPolicy, PlanPolicy
 
 ### HTTPRoute
 
@@ -151,133 +151,10 @@ APIProduct **must** reference an existing HTTPRoute via `targetRef`. The HTTPRou
 
 ### AuthPolicy
 
-AuthPolicy is typically applied to the same HTTPRoute that the APIProduct references. This enforces authentication (such as API key validation) for requests to the API. When a developer requests access to an APIProduct, an APIKey resource is created, which generates a Kubernetes Secret. The AuthPolicy validates incoming requests against these secrets.
+AuthPolicy is applied to the same HTTPRoute that the APIProduct references. This enforces authentication (such as API key validation) for requests to the API. When a developer requests access to an APIProduct, an APIKey resource is created, which generates a Kubernetes Secret. The AuthPolicy validates incoming requests against these secrets.
 
 ### PlanPolicy
 
 PlanPolicy is an extension that can target the same HTTPRoute as the APIProduct. It defines tiered access plans with different rate limits. The APIProduct controller automatically discovers PlanPolicies attached to the same HTTPRoute and surfaces the plan information in the `status.discoveredPlans` field. This allows the developer portal to display available plans to users requesting API access.
 
-### RateLimitPolicy
 
-RateLimitPolicy can be applied to the same HTTPRoute for non-plan-based rate limiting. Unlike PlanPolicy, which provides tiered limits based on API key metadata, RateLimitPolicy applies uniform rate limits to all requests or uses different criteria for rate limiting.
-
-## Complete Integration Example
-
-```yaml
-# 1. HTTPRoute - defines the API routing
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: store-api-route
-  namespace: store
-spec:
-  parentRefs:
-    - name: api-gateway
-      namespace: gateway-system
-  hostnames:
-    - store-api.example.com
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /api/v1
-      backendRefs:
-        - name: store-service
-          port: 8080
----
-# 2. AuthPolicy - enforces API key authentication
-apiVersion: kuadrant.io/v1
-kind: AuthPolicy
-metadata:
-  name: store-api-auth
-  namespace: store
-spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: store-api-route
-  rules:
-    authentication:
-      "api-key":
-        apiKey:
-          selector:
-            matchLabels:
-              devportal.kuadrant.io/api: store-api
-        credentials:
-          authorizationHeader:
-            prefix: Bearer
----
-# 3. PlanPolicy - defines tiered rate limits
-apiVersion: extensions.kuadrant.io/v1alpha1
-kind: PlanPolicy
-metadata:
-  name: store-api-plans
-  namespace: store
-spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: store-api-route
-  plans:
-    - tier: enterprise
-      predicate: |
-        has(auth.identity) &&
-        auth.identity.metadata.annotations["secret.kuadrant.io/plan-id"] == "enterprise"
-      limits:
-        monthly: 1000000
-        custom:
-          - limit: 500
-            window: 1m
-    - tier: professional
-      predicate: |
-        has(auth.identity) &&
-        auth.identity.metadata.annotations["secret.kuadrant.io/plan-id"] == "professional"
-      limits:
-        monthly: 100000
-        custom:
-          - limit: 100
-            window: 1m
-    - tier: free
-      predicate: |
-        has(auth.identity) &&
-        auth.identity.metadata.annotations["secret.kuadrant.io/plan-id"] == "free"
-      limits:
-        daily: 100
-        custom:
-          - limit: 10
-            window: 1m
----
-# 4. APIProduct - provides the developer portal catalog entry
-apiVersion: devportal.kuadrant.io/v1alpha1
-kind: APIProduct
-metadata:
-  name: store-api
-  namespace: store
-spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: store-api-route
-  displayName: E-Commerce Store API
-  description: |
-    Comprehensive API for managing products, orders, and customers
-    in our e-commerce platform. Supports multiple payment methods
-    and real-time inventory updates.
-  version: v1
-  approvalMode: manual
-  publishStatus: Published
-  tags:
-    - e-commerce
-    - retail
-    - payments
-  contact:
-    team: E-Commerce Platform Team
-    email: store-api@example.com
-    slack: "#store-api-support"
-    url: https://wiki.example.com/teams/ecommerce
-  documentation:
-    docsURL: https://docs.example.com/apis/store
-    openAPISpecURL: https://store-api.example.com/openapi.yaml
-    swaggerUI: https://store-api.example.com/docs
-    gitRepository: https://github.com/example/store-api
-```
